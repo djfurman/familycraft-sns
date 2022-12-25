@@ -1,0 +1,14 @@
+[
+  {
+    "Key": "CreatedVia",
+    "Value": "CloudFormation"
+  },
+  {
+    "Key": "Project",
+    "Value": "FamilyCraft"
+  },
+  {
+    "Key": "Purpose",
+    "Value": "Test SNS Message"
+  }
+]
