@@ -1,0 +1,141 @@
+
+# -*- mode: yaml -*-
+# vim: set filetype=yaml
+---
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  familycraft-sns
+
+  Simple SAM function to deploy the SNS Worker for FamilyCraft
+
+Parameters:
+  LocalOrgId:
+    Description: AWS Root Organization ID used to explicitly deny actions by identities outside the org
+    NoEcho: true
+    Type: String
+
+# More info about Globals: https://github.com/awslabs/serverless-application-model/blob/master/docs/globals.rst
+Globals:
+  Function:
+    AutoPublishAlias: live
+    MemorySize: 256
+    ReservedConcurrentExecutions: 1
+    Runtime: python3.9
+    Timeout: 45
+
+Resources:
+  BootTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      FifoTopic: false
+      TopicName: !Ref AWS::StackName
+
+  BootTopicPolicy:
+    Type: AWS::SNS::TopicPolicy
+    Properties:
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: PreventMessagesUnlessEncryptedInFlight
+            Action:
+              - sns:Publish
+            Condition:
+              Bool:
+                aws:SecureTransport: false
+              StringNotEquals:
+                aws:PrincipalOrgID: !Ref LocalOrgId
+            Effect: Deny
+            Principal: "*"
+            Resource: !Ref BootTopic
+      Topics:
+        - !Ref BootTopic
+
+  SnsWorker:
+    DependsOn:
+      - SnsWorkerLogGroup
+    Type: AWS::Serverless::Function # More info about Function Resource: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#awsserverlessfunction
+    Properties:
+      Architectures:
+        - arm64
+      CodeUri: family_craft/
+      Environment:
+        Variables:
+          LOG_LEVEL: INFO
+          POWERTOOLS_SERVICE_NAME: !Sub ${AWS::StackName}-sns-worker
+      Events:
+        SnsBootNotice:
+          Properties:
+            Topic: !GetAtt BootTopic.TopicArn
+          Type: SNS
+      FunctionName: !Sub ${AWS::StackName}-worker
+      Handler: app.lambda_handler
+      Layers:
+        - !Sub arn:aws:lambda:${AWS::Region}:017000801446:layer:AWSLambdaPowertoolsPythonV2-Arm64:17
+      Policies:
+        - Statement:
+          - Sid: PreventAnyInvokeOtherThanSns
+            Action:
+              - lambda:InvokeFunction
+            Condition:
+              ArnNotLike:
+                Aws:SourceArn: !GetAtt BootTopic.Arn
+            Effect: Deny
+            Principal:
+              Service: !Sub sns.${AWS::Region}.amazonaws.com
+      Role: !Ref SnsWorkerRole
+
+  SnsWorkerLogGroup:
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${AWS::StackName}-worker"
+      RetentionInDays: 7
+
+  SnsWorkerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Action:
+            - sts:AssumeRole
+            Effect: Allow
+            Principal:
+              Service:
+                - !Sub lambda.${AWS::Region}.amazonaws.com
+      Description: Lambda execution role for SNS Worker to trigger Fargate task management
+      Path: /FamilyCraft/
+      Policies:
+        - PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: CreateLogGroupsAndStreams
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                Effect: Allow
+                Resource:
+                  - !GetAtt SnsWorkerLogGroup.Arn
+              - Sid: EmitLogRecords
+                Action:
+                  - logs:PutLogEvents
+                Effect: Allow
+                Resource:
+                  - !Sub "${!GetAtt SnsWorkerLogGroup.Arn}:log-stream:*"
+          PolicyName: AllowLogging
+      RoleName: !Sub "sns-worker-${AWS::Region}"
+
+Outputs:
+  GeneratedSnsTopicArn:
+    Description: Topic ARN for the SNS topic generated to trigger this function
+    Export:
+      Name: !Join [":", [!Ref AWS::StackName, boot-topic-arn]]
+    Value: !GetAtt BootTopic.TopicArn
+  GeneratedSnsTopicName:
+    Description: Topic Name for the SNS topic generated to trigger this function
+    Export:
+      Name: !Join [":", [!Ref AWS::StackName, boot-topic-name]]
+    Value: !GetAtt BootTopic.TopicName
+
