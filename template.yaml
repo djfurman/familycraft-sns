@@ -54,6 +54,7 @@ Resources:
   SnsWorker:
     DependsOn:
       - SnsWorkerLogGroup
+      - SnsWorkerExecutionPolicy
     Type: AWS::Serverless::Function # More info about Function Resource: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#awsserverlessfunction
     Properties:
       Architectures:
@@ -71,7 +72,7 @@ Resources:
       FunctionName: !Sub ${AWS::StackName}-worker
       Handler: app.lambda_handler
       Layers:
-        - !Sub arn:aws:lambda:${AWS::Region}:017000801446:layer:AWSLambdaPowertoolsPythonV2-Arm64:17
+        - arn:aws:lambda:us-east-1:017000801446:layer:AWSLambdaPowertoolsPythonV2-Arm64:17
       Policies:
         - Statement:
           - Sid: PreventAnyInvokeOtherThanSns
@@ -79,7 +80,7 @@ Resources:
               - lambda:InvokeFunction
             Condition:
               ArnNotLike:
-                Aws:SourceArn: !GetAtt BootTopic.Arn
+                aws:SourceArn: !GetAtt BootTopic.Arn
             Effect: Deny
             Principal:
               Service: !Sub sns.${AWS::Region}.amazonaws.com
@@ -107,25 +108,30 @@ Resources:
                 - !Sub lambda.${AWS::Region}.amazonaws.com
       Description: Lambda execution role for SNS Worker to trigger Fargate task management
       Path: /FamilyCraft/
-      Policies:
-        - PolicyDocument:
-            Version: "2012-10-17"
-            Statement:
-              - Sid: CreateLogGroupsAndStreams
-                Action:
-                  - logs:CreateLogGroup
-                  - logs:CreateLogStream
-                Effect: Allow
-                Resource:
-                  - !GetAtt SnsWorkerLogGroup.Arn
-              - Sid: EmitLogRecords
-                Action:
-                  - logs:PutLogEvents
-                Effect: Allow
-                Resource:
-                  - !Sub "${!GetAtt SnsWorkerLogGroup.Arn}:log-stream:*"
-          PolicyName: AllowLogging
       RoleName: !Sub "sns-worker-${AWS::Region}"
+
+  SnsWorkerExecutionPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: CreateLogGroupsAndStreams
+            Action:
+              - logs:CreateLogGroup
+              - logs:CreateLogStream
+            Effect: Allow
+            Resource:
+              - !GetAtt SnsWorkerLogGroup.Arn
+          - Sid: EmitLogRecords
+            Action:
+              - logs:PutLogEvents
+            Effect: Allow
+            Resource:
+              - !Sub "${!GetAtt SnsWorkerLogGroup.Arn}:log-stream:*"
+      PolicyName: !Sub "${AWS::StackName}-worker-cw-log-permissions"
+      Roles:
+        - !Ref SnsWorkerRole
 
 Outputs:
   GeneratedSnsTopicArn:
