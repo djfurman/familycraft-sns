@@ -5,8 +5,8 @@ This project will take an event sent via SNS and manage spinning up an ECS conta
 ```mermaid
 flowchart LR
     start([Start])
-    invoke[[Enable appropriate ECS Fargate Task]]
-    notify[[Notify that FamilyCraft is ready]]
+    invoke[[Enable \nappropriate \nECS Fargate Task]]
+    notify[[Notify me \nFamilyCraft is ready]]
     finish([Complete])
     start-->invoke
     invoke-->notify
