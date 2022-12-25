@@ -1,0 +1,15 @@
+[[source]]
+url = "https://pypi.org/simple"
+verify_ssl = true
+name = "pypi"
+
+[packages]
+
+[dev-packages]
+aws-lambda-powertools = {extras = ["aws-sdk"], version = "*"}
+boto3 = "*"
+mypy-boto3-ecs = "*"
+pytest = "*"
+
+[requires]
+python_version = "3.9"
